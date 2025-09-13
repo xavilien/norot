@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NoRot Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🛡️ NoRot Dashboard</h1>
+            <p>Social Media Content Filter - Protecting you from doomscrolling</p>
+        </header>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>Total Requests</h3>
+                <div class="stat-number" id="total-requests">-</div>
+            </div>
+            <div class="stat-card blocked">
+                <h3>Blocked</h3>
+                <div class="stat-number" id="blocked-requests">-</div>
+            </div>
+            <div class="stat-card throttled">
+                <h3>Throttled</h3>
+                <div class="stat-number" id="throttled-requests">-</div>
+            </div>
+            <div class="stat-card allowed">
+                <h3>Allowed</h3>
+                <div class="stat-number" id="allowed-requests">-</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Recent Activity</h2>
+            <div class="activity-list" id="recent-activity">
+                <div class="loading">Loading recent activity...</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Filter Configuration</h2>
+            <div class="config-section" id="config-section">
+                <div class="loading">Loading configuration...</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>How to Use NoRot</h2>
+            <div class="instructions">
+                <div class="instruction-card">
+                    <h3>Browser Setup</h3>
+                    <p>Configure your browser to use NoRot as a proxy:</p>
+                    <ul>
+                        <li>Set proxy server to: <code>127.0.0.1:8080</code></li>
+                        <li>Or use the browser extension (coming soon)</li>
+                    </ul>
+                </div>
+                
+                <div class="instruction-card">
+                    <h3>Direct URL Filtering</h3>
+                    <p>Test content filtering by visiting:</p>
+                    <code>http://localhost:8080?url=https://example.com</code>
+                </div>
+                
+                <div class="instruction-card">
+                    <h3>Bypass Protection</h3>
+                    <p>When content is blocked, you can choose to proceed anyway. Use this feature mindfully!</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>
