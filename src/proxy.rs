@@ -57,8 +57,10 @@ pub async fn create_app(state: AppState) -> Result<Router> {
         .route("/api/recent", get(ui::api_recent_content))
         .route("/api/config", get(ui::api_get_config))
         .route("/static/*file", get(ui::static_files))
-        // Proxy route - handles all other requests
-        .fallback(any(proxy_handler))
+        // Proxy route - explicit proxy endpoint
+        .route("/proxy", any(proxy_handler))
+        // Fallback route - handles URL parameter based proxy requests
+        .fallback(any(proxy_fallback))
         .layer(
             ServiceBuilder::new()
                 .layer(TraceLayer::new_for_http())
@@ -77,21 +79,11 @@ async fn proxy_handler(
     Query(query): Query<ProxyQuery>,
     body: axum::body::Body,
 ) -> impl IntoResponse {
-    // If this is a request to our UI, let it pass through
-    if uri.path().starts_with("/api/") || uri.path() == "/" || uri.path().starts_with("/static/") {
-        return (StatusCode::NOT_FOUND, "Not found").into_response();
-    }
-    
-    // Extract target URL from various sources
+    // Extract target URL from query parameter
     let target_url = if let Some(url) = query.url {
         url
     } else {
-        // Try to construct URL from Host header and path
-        if let Some(host) = headers.get("host") {
-            format!("https://{}{}", host.to_str().unwrap_or(""), uri.path_and_query().map(|pq| pq.as_str()).unwrap_or(""))
-        } else {
-            return (StatusCode::BAD_REQUEST, "No target URL provided").into_response();
-        }
+        return (StatusCode::BAD_REQUEST, "No target URL provided").into_response();
     };
     
     info!("Proxying request to: {}", target_url);
@@ -121,7 +113,7 @@ async fn proxy_handler(
 }
 
 fn should_filter_url(url: &str) -> bool {
-    // Only filter social media and content sites
+    // For testing, filter all URLs, or check for social media domains
     let social_media_domains = [
         "instagram.com",
         "facebook.com", 
@@ -132,6 +124,7 @@ fn should_filter_url(url: &str) -> bool {
         "reddit.com",
         "snapchat.com",
         "linkedin.com",
+        "localhost", // For testing
     ];
     
     social_media_domains.iter().any(|domain| url.contains(domain))
@@ -299,5 +292,67 @@ fn inject_warning(html: &str, decision: &crate::filter::FilterDecision) -> Strin
         }
     } else {
         format!("{}{}", warning_banner, html)
+    }
+}
+
+async fn proxy_fallback(
+    State(state): State<AppState>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+    Query(query): Query<ProxyQuery>,
+    body: axum::body::Body,
+) -> Response {
+    // Check if this is a URL parameter based proxy request
+    if let Some(url) = query.url {
+        return proxy_with_url(state, method, uri, headers, url, query.norot_bypass.is_some(), body).await;
+    }
+    
+    // Default 404 for other requests
+    (StatusCode::NOT_FOUND, "Not found").into_response()
+}
+
+async fn proxy_with_url(
+    state: AppState,
+    _method: Method,
+    _uri: Uri,
+    _headers: HeaderMap,
+    target_url: String,
+    bypass: bool,
+    _body: axum::body::Body,
+) -> Response {
+    info!("Proxying request to: {}", target_url);
+    
+    // For non-bypass requests, check if we should filter
+    if !bypass && should_filter_url(&target_url) {
+        match filter_request(&state, &target_url).await {
+            Ok(response) => return response,
+            Err(e) => {
+                error!("Error filtering request: {}", e);
+                return (StatusCode::INTERNAL_SERVER_ERROR, format!("Filter error: {}", e)).into_response();
+            }
+        }
+    }
+    
+    // For bypass or non-filtered content, just fetch and return
+    match state.client.get(&target_url).send().await {
+        Ok(response) => {
+            let status = response.status();
+            let body = match response.text().await {
+                Ok(text) => text,
+                Err(_) => return (StatusCode::BAD_GATEWAY, "Failed to read response").into_response(),
+            };
+            
+            let axum_status = match axum::http::StatusCode::from_u16(status.as_u16()) {
+                Ok(s) => s,
+                Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            
+            (axum_status, Html(body)).into_response()
+        },
+        Err(e) => {
+            error!("Error proxying request: {}", e);
+            (StatusCode::BAD_GATEWAY, format!("Proxy error: {}", e)).into_response()
+        }
     }
 }
